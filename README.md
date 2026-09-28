@@ -7,7 +7,7 @@ Release package for the **Sesje Bota / Bot Session Pane** extension for Hermes D
 - **Release date:** September 28, 2026
 - **Tested Hermes checkout:** `802ae8544b`
 - **Archive:** [`Bot-Session-Pane-2026-09-28.zip`](./Bot-Session-Pane-2026-09-28.zip)
-- **SHA-256:** `634a4d56236879469f0163f2479677e80304b92eb904856c2456c51a326cd82d`
+- **SHA-256:** `46dec66c57cc21ade65bde175f4494037be7c19f3db8d23ce291f414eda330a0`
 
 The full unpacked release is also in [`Bot-Session-Pane-2026-09-28/`](./Bot-Session-Pane-2026-09-28/).
 

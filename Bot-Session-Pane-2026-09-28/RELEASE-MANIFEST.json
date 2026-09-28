@@ -13,8 +13,8 @@
   "files": [
     {
       "path": "plugin/plugin.js",
-      "bytes": 17521,
-      "sha256": "3aaad035b2e954d53b9eecaf8ffd66b8eaaadf2c3e64847ec10002c7f374c431"
+      "bytes": 18095,
+      "sha256": "bcb2cbdb1d09a8452c70c030177e0fea4035ac9683836b0648f847888880d1e4"
     },
     {
       "path": "patches/core-integration.patch",

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'bot-session-pane-stable'
+const EXCLUDED_AUTOMATION_SOURCES = ['cron']
 const EMPTY_ATOM = { get: () => null, listen: () => () => {}, subscribe: () => () => {} }
 
 function selectedBotAtBoot() {
@@ -154,13 +155,31 @@ async function requestForProfile(profile, method, params = {}, options = {}) {
   return host.request(method, scoped)
 }
 
+function isManualSession(row) {
+  const source = String(row?.source || '').trim().toLowerCase()
+  return !EXCLUDED_AUTOMATION_SOURCES.includes(source)
+}
+
+function manualSessionRows(rows) {
+  return (Array.isArray(rows) ? rows : []).filter(item => isManualSession(item?.row || item))
+}
+
 async function listSessions(profile) {
-  return requestForProfile(profile, 'session.list', { include_hidden: true, limit: 200 })
+  const response = await requestForProfile(profile, 'session.list', {
+    // Hidden sessions include Bot Mode's internal canonical "Bot Chat".
+    // The pane intentionally presents only conversations a person can manage.
+    include_hidden: false,
+    limit: 200
+  })
+  return { ...response, sessions: manualSessionRows(response?.sessions) }
 }
 
 async function searchHistory(profile, query) {
-  const response = await requestForProfile(profile, 'session.search', { query, limit: 100 }, { timeoutMs: 60_000 })
-  return Array.isArray(response?.results) ? response.results : []
+  const response = await requestForProfile(profile, 'session.search', {
+    query,
+    limit: 100
+  }, { timeoutMs: 60_000 })
+  return manualSessionRows(response?.results)
 }
 
 function sortSessions(rows) {
