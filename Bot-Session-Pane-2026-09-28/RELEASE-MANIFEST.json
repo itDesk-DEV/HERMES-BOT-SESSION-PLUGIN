@@ -1,0 +1,40 @@
+{
+  "name": "Sesje Bota / Bot Session Pane",
+  "release_date": "2026-09-28",
+  "tested_hermes_commit": "802ae8544b",
+  "plugin_id": "bot-session-pane-stable",
+  "desktop_plugin_path": "%LOCALAPPDATA%\\hermes\\desktop-plugins\\bot-session-pane-stable\\plugin.js",
+  "requires_core_integration": true,
+  "core_files_patched": [
+    "apps/desktop/src/plugins/hermes-bots/bot-state.ts",
+    "apps/desktop/src/plugins/hermes-bots/roster-actions.ts",
+    "tui_gateway/methods_session.py"
+  ],
+  "files": [
+    {
+      "path": "plugin/plugin.js",
+      "bytes": 17521,
+      "sha256": "3aaad035b2e954d53b9eecaf8ffd66b8eaaadf2c3e64847ec10002c7f374c431"
+    },
+    {
+      "path": "patches/core-integration.patch",
+      "bytes": 9744,
+      "sha256": "75d171a52ed9beda08ddf8940613d510c7b5df9888820f9ce39538d3f051c767"
+    },
+    {
+      "path": "Install-BotSessionPane.ps1",
+      "bytes": 4125,
+      "sha256": "64ff7ce5b53a54eb38fbf82b34d8d38ea968c121d9f0d6cdf01279652539a5c9"
+    },
+    {
+      "path": "Uninstall-BotSessionPane.ps1",
+      "bytes": 1587,
+      "sha256": "b1f94c600bd6c52bd847554ecdd561b82b37d4ef680252d4736aa28193e36e6e"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3612,
+      "sha256": "a1573ea558e18d9ce8105d08c4beb30648c13f922a97a92a98dbc539461e7b15"
+    }
+  ]
+}
