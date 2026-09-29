@@ -4,12 +4,12 @@ Release package for the **Sesje Bota / Bot Session Pane** extension for Hermes D
 
 ## Current release
 
-- **Release date:** September 28, 2026
-- **Tested Hermes checkout:** `802ae8544b`
-- **Archive:** [`Bot-Session-Pane-2026-09-28.zip`](./Bot-Session-Pane-2026-09-28.zip)
-- **SHA-256:** `46dec66c57cc21ade65bde175f4494037be7c19f3db8d23ce291f414eda330a0`
+- **Release date:** September 29, 2026
+- **Tested Hermes checkout:** `aa96575ed11c`
+- **Archive:** [`Bot-Session-Pane-2026-09-29.zip`](./Bot-Session-Pane-2026-09-29.zip)
+- **SHA-256:** `3c7836f6d25bf67fc5fac970445e24081fdc081a834afd5fc66d8417926cf836`
 
-The full unpacked release is also in [`Bot-Session-Pane-2026-09-28/`](./Bot-Session-Pane-2026-09-28/).
+The full unpacked release is also in [`Bot-Session-Pane-2026-09-29/`](./Bot-Session-Pane-2026-09-29/).
 
 ## Installation
 
@@ -27,7 +27,7 @@ The full unpacked release is also in [`Bot-Session-Pane-2026-09-28/`](./Bot-Sess
    hermes desktop
    ```
 
-Read the release [`README.md`](./Bot-Session-Pane-2026-09-28/README.md) before installing. The extension includes a Desktop plugin plus a small, version-checked core patch for Bot Mode and full-text search.
+Read the release [`README.md`](./Bot-Session-Pane-2026-09-29/README.md) before installing. The extension includes a Desktop plugin plus a small, version-checked core patch for Bot Mode, full-text search, Bot Chat handling, session rename, archive and safe deletion.
 
 ## Safety
 

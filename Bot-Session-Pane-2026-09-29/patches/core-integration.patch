@@ -1,0 +1,340 @@
+diff --git a/apps/desktop/src/plugins/hermes-bots/bot-state.ts b/apps/desktop/src/plugins/hermes-bots/bot-state.ts
+index 840fea42e0..116d6de6aa 100644
+--- a/apps/desktop/src/plugins/hermes-bots/bot-state.ts
++++ b/apps/desktop/src/plugins/hermes-bots/bot-state.ts
+@@ -36,12 +36,41 @@ export const lastToastedPreview = new Map<string, string>()
+  *  (the bot you're actually chatting with) and roster clicks. */
+ export const $selectedBot = atom('default')
+ 
++/** Public bridge for companion desktop panes. Bot Mode's actual selection is
++ * window-local, so a separate plugin cannot import this atom; publish a tiny,
++ * non-sensitive owner descriptor whenever either selection atom changes. */
++type SelectedBotBridge = { connectionId: string; profile: string; selection: string }
++
++declare global {
++  interface Window {
++    __hermesSelectedBot?: SelectedBotBridge
++  }
++}
++
++function publishSelectedBot(selection: unknown): void {
++  const raw = String(selection || '').trim()
++  const separator = raw.indexOf('::')
++  const connectionId = separator >= 0 ? raw.slice(0, separator) : ''
++  const profile = (separator >= 0 ? raw.slice(separator + 2) : raw).trim()
++
++  if (!profile || typeof window === 'undefined') {
++    return
++  }
++
++  const detail: SelectedBotBridge = { connectionId, profile, selection: raw }
++  window.__hermesSelectedBot = detail
++  window.dispatchEvent(new CustomEvent<SelectedBotBridge>('hermes:bots-selected', { detail }))
++}
++
++$selectedBot.listen(publishSelectedBot)
++
+ /** Owner of the chat the user is LOOKING AT. Newer desktops expose a
+  *  connection-qualified owner. Older builds synthesize the previous
+  *  profile/gateway fallback and listen to both atoms when available. */
+ /** Source-qualified Bot Mode selection. Restoring it is presentation-only:
+  *  it never activates a gateway or creates a session. */
+ export const $selectedRosterKey = atom('')
++$selectedRosterKey.listen(publishSelectedBot)
+ export const $selectedRosterHydrated = atom(false)
+ export const $rosterHydrated = atom(false)
+ /** Mirrors host.paneVisibility('hermes-bots:pane') — wired in register(). */
+diff --git a/apps/desktop/src/plugins/hermes-bots/roster-actions.ts b/apps/desktop/src/plugins/hermes-bots/roster-actions.ts
+index a5b587128c..3a8fcd0b15 100644
+--- a/apps/desktop/src/plugins/hermes-bots/roster-actions.ts
++++ b/apps/desktop/src/plugins/hermes-bots/roster-actions.ts
+@@ -19,13 +19,13 @@ import {
+   saveSelectedRosterBot
+ } from './bot-state'
+ import { CANONICAL_CHAT_TITLE, notifyBotOpenFailure, openBotCanonicalChat, prepareBotSource } from './canonical-chat'
+-import { $botMeta, botActivitySession, botRosterKey, botSelectionKey, newBotChat } from './data'
++import { $botMeta, $lastRoster, botActivitySession, botRosterKey, botSelectionKey, newBotChat } from './data'
+ import { $groupChats, $groupChatWorkspace } from './group-chat'
+ import { openGroupChat } from './group-chat-view'
+ import { liveGroupChatNames } from './group-membership'
+ import { closeGroupChatMainTab } from './group-panes'
+ import { displayName } from './labels'
+-import { botRosterMeta, botWorkspaceOwnerKey, setBotsWorkspaceOwner } from './routing'
++import { botConnectionRoute, botRosterMeta, botWorkspaceOwnerKey, setBotsWorkspaceOwner } from './routing'
+ import { botCanonicalSessionId } from './row-helpers'
+ import { bumpBotOpenGeneration, getBotOpenGeneration, getPluginCtx } from './shared'
+ import type { RosterRow } from './types'
+@@ -382,6 +382,98 @@ export async function openRosterBot(bot: RosterRow): Promise<boolean> {
+   return true
+ }
+ 
++/** Open one ordinary stored conversation through Bot Mode's ownership path.
++ *
++ * The Sessions pane must not call `host.openSession` independently: a roster
++ * click is concurrently resolving the canonical Bot Chat and Desktop treats
++ * two open requests as competing selections. Bumping the shared generation
++ * first retires that canonical request, then this path owns source activation,
++ * workspace routing, and the side-session tab just as Bot Mode does. */
++export async function openRosterStoredSession(
++  bot: RosterRow,
++  session: { id: string; title?: string; messageCount?: number }
++): Promise<boolean> {
++  const storedId = String(session?.id || '').trim()
++
++  if (!storedId || typeof host.openSession !== 'function') {
++    return false
++  }
++
++  const generation = bumpBotOpenGeneration()
++  const meta = botRosterMeta(bot, $botMeta.get())
++  haptic('tap')
++  saveSelectedRosterBot(bot)
++  const ownerKey = botWorkspaceOwnerKey(bot)
++  setBotsWorkspaceOwner(ownerKey, bot)
++  dismissGroupChatForBotOpen()
++
++  try {
++    await prepareBotSource(bot)
++
++    if (generation !== getBotOpenGeneration()) {
++      return false
++    }
++
++    const route = botConnectionRoute(bot)
++    await host.openSession(storedId, {
++      ...(route ? { route } : {}),
++      profile: bot.name,
++      intent: 'tab',
++      awaitHydration: true,
++      expectHistory: (session.messageCount ?? 1) > 0,
++      forceResume: true,
++      keepAllProfilesScope: true,
++      workspaceMode: 'bots',
++      workspaceOwnerKey: ownerKey,
++      retryHydrationTimeoutOnce: true
++    })
++
++    return generation === getBotOpenGeneration()
++  } catch (error) {
++    if (generation === getBotOpenGeneration()) {
++      notifyBotOpenFailure(error, bot, 'open', displayName(bot, meta))
++    }
++
++    return false
++  }
++}
++
++/** Bridge for independently loaded Desktop panes. The pane supplies only a
++ * profile and stored-session id; Bot Mode resolves the current roster row so
++ * connection aliases and workspace ownership remain canonical. */
++export async function openStoredBotSessionFromPane(request: {
++  profile?: string
++  id?: string
++  title?: string
++  messageCount?: number
++}): Promise<boolean> {
++  const profile = String(request?.profile || '').trim()
++  const bot = $lastRoster.get().find(row => String(row?.name || '') === profile)
++
++  return bot
++    ? openRosterStoredSession(bot, {
++        id: String(request?.id || ''),
++        title: String(request?.title || ''),
++        messageCount: Number(request?.messageCount || 0)
++      })
++    : false
++}
++
++declare global {
++  interface Window {
++    __hermesOpenBotStoredSession?: (request: {
++      profile?: string
++      id?: string
++      title?: string
++      messageCount?: number
++    }) => Promise<boolean>
++  }
++}
++
++if (typeof window !== 'undefined') {
++  window.__hermesOpenBotStoredSession = openStoredBotSessionFromPane
++}
++
+ /** Bot-open handoff: capture the selected group and retire its registered
+  * main tab (or clear the in-panel selection) before async source prep /
+  * canonical open. */
+diff --git a/tui_gateway/contracts/sessions.py b/tui_gateway/contracts/sessions.py
+index 685161f1e7..d287d88f67 100644
+--- a/tui_gateway/contracts/sessions.py
++++ b/tui_gateway/contracts/sessions.py
+@@ -214,6 +214,7 @@ class SessionListParams(ProfileParams):
+     title: str | None = None  # exact-title lookup (title as identity); windowless
+     limit: int | None = None
+     include_hidden: bool = False
++    exclude_sources: list[str] | None = None
+ 
+ 
+ class SessionListRow(Result):
+@@ -308,6 +309,21 @@ method("session.title", params=SessionTitleParams, result=SessionTitleResult,
+        doc="Read or set a live session's title; a title set before the row exists is queued.")
+ 
+ 
++class SessionRenameParams(ProfileParams):
++    """Rename one already-stored session without resuming it."""
++
++    session_id: str
++    title: str
++
++
++class SessionRenameResult(Result):
++    title: str
++
++
++method("session.rename", params=SessionRenameParams, result=SessionRenameResult,
++       doc="Rename one stored session in its owning profile without opening it.")
++
++
+ class SessionSetHiddenParams(Params):
+     """``session_id`` is a live runtime id first, else a stored id / key / title."""
+ 
+diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
+index 2e2db54971..f5cc3b02ec 100644
+--- a/tui_gateway/methods_session.py
++++ b/tui_gateway/methods_session.py
+@@ -62,6 +62,21 @@ def _int_param(params: dict, key: str, default: int) -> int:
+         return default
+ 
+ 
++def _source_list_param(params: dict, key: str) -> list[str]:
++    """Normalized optional source list; one string and list/tuple/set inputs are accepted."""
++    raw = params.get(key)
++    if raw is None:
++        return []
++    values = [raw] if isinstance(raw, str) else raw if isinstance(raw, (list, tuple, set)) else []
++    seen, result = set(), []
++    for value in values:
++        source = str(value or "").strip().lower()
++        if source and source not in seen:
++            seen.add(source)
++            result.append(source)
++    return result
++
++
+ def _new_runtime_ids(params: dict) -> tuple[str, str]:
+     """Fresh runtime sid + resolved DB ``source`` for a session minted from ``params``."""
+     return uuid.uuid4().hex[:8], _resolve_session_source(_str_param(params, "source") or None)
+@@ -534,13 +549,80 @@ def _(rid, params: dict, db) -> dict:
+         # A store without a path has no profile config to read, so it keeps the default shape.
+         db_path = getattr(db, "db_path", None)
+         include_subagents = bool(db_path) and show_subagent_sessions(Path(db_path).parent)
+-        rows = _listing_rows(db, max(limit * 2, 200), include_hidden=_flag(params, "include_hidden"),
+-                             include_subagents=include_subagents)[:limit]
++        exclude_sources = _source_list_param(params, "exclude_sources")
++        rows = _listing_rows(
++            db,
++            max(limit * 2, 200),
++            include_hidden=_flag(params, "include_hidden"),
++            include_subagents=include_subagents,
++            **({"exclude_sources": exclude_sources} if exclude_sources else {})
++        )[:limit]
+         return _ok(rid, {"sessions": [_session_row_summary(s) for s in rows]})
+     except Exception as e:
+         return _err(rid, 5006, str(e))
+ 
+ 
++@method("session.search")
++@_with_db(5017, session_scoped=False)
++def _(rid, params: dict, db) -> dict:
++    """Search the complete persisted transcript of one scoped profile using Hermes' FTS index.
++
++    This is deliberately profile-scoped through ``_profile_db(params)`` rather than the live
++    session registry: inactive and archived conversations remain searchable without resuming
++    them. ``search_messages`` ranks by BM25 and includes phrase/prefix/relaxed fallbacks.
++    """
++    query = _str_param(params, "query") or _str_param(params, "q")
++    if not query:
++        return _ok(rid, {"results": []})
++    try:
++        import re
++
++        limit = max(1, min(_int_param(params, "limit", 50), 100))
++        exclude_sources = _source_list_param(params, "exclude_sources")
++        # Preserve quoted phrases and wildcards; make ordinary terms prefix-searchable.
++        fts_query = " ".join(
++            token if token.startswith('"') or token.endswith("*") else token + "*"
++            for token in re.findall(r'"[^"]*"|\S+', query))
++        raw_hits = db.search_messages(
++            query=fts_query,
++            limit=max(limit * 5, 50),
++            exclude_sources=exclude_sources or None,
++            fields=("session_id", "role", "snippet", "session_started"),
++        )
++        results, seen = [], set()
++        for hit in raw_hits:
++            source_id = str(hit.get("session_id") or "")
++            if not source_id:
++                continue
++            try:
++                resolved_id = db.get_compression_tip(source_id) or source_id
++                row = db.get_session_rich_row(resolved_id) or db.get_session(resolved_id)
++            except Exception:
++                continue
++            if not row:
++                continue
++            # A compression lineage may have several message hits; keep its top BM25 hit.
++            lineage_key = str(row.get("id") or resolved_id)
++            if lineage_key in seen:
++                continue
++            seen.add(lineage_key)
++            payload = _session_row_summary(row, resolved_id=resolved_id)
++            payload.update({
++                "snippet": str(hit.get("snippet") or ""),
++                "role": str(hit.get("role") or ""),
++                "last_active": row.get("last_active") or row.get("started_at") or 0,
++                # A display hint only, not a calibrated statistical probability. Ordering remains BM25.
++                "confidence": max(10, 99 - len(results) * 4),
++            })
++            results.append(payload)
++            if len(results) >= limit:
++                break
++        return _ok(rid, {"results": results})
++    except Exception as exc:
++        logger.exception("session.search failed")
++        return _err(rid, 5017, str(exc))
++
++
+ @method("session.most_recent")
+ def _(rid, params: dict) -> dict:
+     """Most recent human-facing session, skipping auto-resume-denied rows (deny-list
+@@ -1163,6 +1245,31 @@ def _(rid, params: dict, session: dict, db) -> dict:
+     return _ok(rid, result)
+ 
+ 
++@method("session.rename")
++def _(rid, params: dict) -> dict:
++    """Rename a persisted row in its profile without resuming/opening the session."""
++    session_id = _str_param(params, "session_id")
++    title = _str_param(params, "title")
++    if not session_id:
++        return _err(rid, 4006, "session_id required")
++    if not title:
++        return _err(rid, 4021, "title required")
++
++    with _profile_db(params, writer=True) as db:
++        if db is None:
++            return _db_unavailable_error(rid, code=5007)
++        if db.get_session(session_id) is None:
++            return _err(rid, 4001, "session not found")
++        try:
++            db.set_session_title(session_id, title)
++            resolved = db.get_session_title(session_id) or title
++        except ValueError as exc:
++            return _err(rid, 4022, str(exc))
++        except Exception as exc:
++            return _err(rid, 5007, str(exc))
++    return _ok(rid, {"title": resolved})
++
++
+ @method("session.archive")
+ def _(rid, params: dict) -> dict:
+     """Set/clear ``archived`` (out of the default list, messages kept — the Desktop PATCH parity flag)
